@@ -215,7 +215,7 @@ class NeuralDiagnosticModel:
 # STANDALONE MODULE VERIFICATION TEST
 # ============================================================
 if __name__ == "__main__":
-    print("\n[OK] Neural diagnosis model test completed successfully.")
+    print("\n[Done] Neural network diagnosis test ran successfully.")
     nn = NeuralDiagnosticModel()
 
     # Train model

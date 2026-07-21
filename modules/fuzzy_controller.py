@@ -131,7 +131,7 @@ class FuzzySeverityAssessor:
 # STANDALONE MODULE VERIFICATION TEST
 # ============================================================
 if __name__ == "__main__":
-    print("\n[OK] Fuzzy severity assessment completed successfully.")
+    print("\n[Done] Fuzzy logic checks ran as expected.")
     fa = FuzzySeverityAssessor()
 
     test_cases = [
