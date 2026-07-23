@@ -237,4 +237,4 @@ if __name__ == "__main__":
     for step in plan_output['plan']:
         print(f" Step {step['step']:2d}: {step['action']:<25} [{step['duration']}]")
 
-    print("\n[✔] AI Treatment Planner test passed!")
+    print("\n[✔] AI Treatment Planner test completed!")
