@@ -192,4 +192,4 @@ if __name__ == "__main__":
     proved, cf = kb.backward_chain("covid19_suspected")
     print(f"Goal 'covid19_suspected' Proved: {proved}, Certainty Factor: {cf}")
 
-    print("\n[✔] Knowledge Base test succeeded!")
+    print("\n[✔] Knowledge Base test completed!")
