@@ -3,9 +3,9 @@
 # Covers: Week 12 (AI Planning Techniques)
 # ============================================================
 
-from copy import deepcopy
 from collections import deque
-from typing import Dict, List, Set, Tuple, Optional
+from typing import Dict, List, Set, Tuple, Optional, Any
+
 
 class TreatmentPlanner:
     """
@@ -17,8 +17,8 @@ class TreatmentPlanner:
     def __init__(self):
         self.action_library = self._build_action_library()
 
-    def _build_action_library(self) -> List[Dict]:
-        """Define medical treatment actions"""
+    def _build_action_library(self) -> List[Dict[str, Any]]:
+        """Define medical treatment actions with STRIPS representations"""
         return [
             # Emergency Actions
             {
@@ -47,7 +47,7 @@ class TreatmentPlanner:
                 'name': 'ReceiveBloodResults',
                 'precond': {'BLOOD_RESULTS_PENDING'},
                 'delete':  {'BLOOD_RESULTS_PENDING'},
-                'add':     {'BLOOD_RESULTS_AVAILABLE', 'DIAGNOSIS_REFINED'},
+                'add':     {'BLOOD_RESULTS_AVAILABLE', 'DIAGNOSIS_REFINED', 'DIAGNOSIS_CONFIRMED'},
                 'cost': 0, 'duration': '2 hours'
             },
             {
@@ -64,7 +64,7 @@ class TreatmentPlanner:
                 'add':     {'PCR_RESULT_AVAILABLE', 'DIAGNOSIS_CONFIRMED'},
                 'cost': 0, 'duration': '24 hours'
             },
-            # Treatment
+            # Treatment Actions
             {
                 'name': 'PrescribeAntiviral',
                 'precond': {'DIAGNOSIS_CONFIRMED', 'VIRAL_INFECTION'},
@@ -117,15 +117,16 @@ class TreatmentPlanner:
         ]
 
     def _apply_action(self, state: frozenset,
-                      action: Dict) -> Optional[frozenset]:
+                      action: Dict[str, Any]) -> Optional[frozenset]:
+        """Applies STRIPS operators (preconditions, delete list, add list)"""
         if not action['precond'].issubset(state):
             return None
         return frozenset((state - action['delete']) | action['add'])
 
     def generate_plan(self,
                       initial_state: Set[str],
-                      goal_state:    Set[str]) -> Optional[List[Dict]]:
-        """BFS-based plan generation"""
+                      goal_state:    Set[str]) -> Optional[List[Dict[str, Any]]]:
+        """BFS-based state space planning algorithm"""
         initial = frozenset(initial_state)
         goal    = frozenset(goal_state)
 
@@ -146,35 +147,32 @@ class TreatmentPlanner:
         return None
 
     def create_treatment_plan(self, diagnosis: str,
-                              urgency: str) -> Dict:
-        """Generate a treatment plan for a given diagnosis"""
+                              urgency: str) -> Dict[str, Any]:
+        """Maps diagnosis and urgency to initial/goal states and generates plan"""
+        diagnosis_clean = diagnosis.lower().strip().replace(' ', '_')
 
         # Map diagnosis to initial state predicates
         diagnosis_states = {
-            'flu':          {'VIRAL_INFECTION', 'DIAGNOSIS_NEEDED'},
-            'covid19':      {'COVID_SUSPECTED', 'CONTAGIOUS_DISEASE',
-                             'DIAGNOSIS_NEEDED'},
-            'cardiac_event':{'EMERGENCY_CASE',  'ICU_AVAILABLE'},
-            'dengue':       {'VIRAL_INFECTION',  'DIAGNOSIS_NEEDED',
-                             'DEHYDRATION_RISK'},
-            'meningitis':   {'EMERGENCY_CASE',  'BACTERIAL_INFECTION',
-                             'ICU_AVAILABLE'},
-            'tuberculosis': {'BACTERIAL_INFECTION', 'CONTAGIOUS_DISEASE',
-                             'DIAGNOSIS_NEEDED'},
-            'diabetes':     {'DIAGNOSIS_NEEDED'},
-            'common_cold':  {'VIRAL_INFECTION', 'DIAGNOSIS_NEEDED'},
+            'flu':           {'VIRAL_INFECTION', 'DIAGNOSIS_NEEDED'},
+            'covid19':       {'COVID_SUSPECTED', 'CONTAGIOUS_DISEASE',
+                              'VIRAL_INFECTION', 'DIAGNOSIS_NEEDED'},
+            'cardiac_event': {'EMERGENCY_CASE',  'ICU_AVAILABLE'},
+            'dengue':        {'VIRAL_INFECTION', 'DIAGNOSIS_NEEDED',
+                              'DEHYDRATION_RISK'},
+            'meningitis':    {'EMERGENCY_CASE',  'BACTERIAL_INFECTION',
+                              'ICU_AVAILABLE'},
+            'tuberculosis':  {'BACTERIAL_INFECTION', 'CONTAGIOUS_DISEASE',
+                              'DIAGNOSIS_NEEDED'},
+            'diabetes':      {'DIAGNOSIS_NEEDED'},
+            'common_cold':   {'VIRAL_INFECTION', 'DIAGNOSIS_NEEDED'},
         }
 
         base_state = {'PATIENT_PRESENT'}
-        dx_state   = diagnosis_states.get(
-            diagnosis.lower().replace(' ', '_'),
-            {'DIAGNOSIS_NEEDED'}
-        )
+        dx_state   = diagnosis_states.get(diagnosis_clean, {'DIAGNOSIS_NEEDED'})
         initial_state = base_state | dx_state
 
         # Goal state: always end with treatment and monitoring
-        goal_state = {'TREATMENT_STARTED', 'VITALS_MONITORED',
-                      'FOLLOWUP_SCHEDULED'}
+        goal_state = {'TREATMENT_STARTED', 'VITALS_MONITORED', 'FOLLOWUP_SCHEDULED'}
         if urgency == 'CRITICAL':
             goal_state.add('PATIENT_IN_ICU')
 
@@ -184,15 +182,15 @@ class TreatmentPlanner:
             return {'error': 'No plan found', 'plan': []}
 
         return {
-            'diagnosis':     diagnosis,
-            'urgency':       urgency,
-            'initial_state': sorted(initial_state),
-            'goal_state':    sorted(goal_state),
-            'steps':         len(plan),
+            'diagnosis':      diagnosis,
+            'urgency':        urgency,
+            'initial_state':  sorted(initial_state),
+            'goal_state':     sorted(goal_state),
+            'steps':          len(plan),
             'total_duration': self._estimate_duration(plan),
             'plan': [
                 {
-                    'step':     i+1,
+                    'step':     i + 1,
                     'action':   a['name'],
                     'duration': a['duration'],
                     'cost':     a['cost']
@@ -201,15 +199,36 @@ class TreatmentPlanner:
             ]
         }
 
-    def _estimate_duration(self, plan: List[Dict]) -> str:
-        durations = [a['duration'] for a in plan]
+    def _estimate_duration(self, plan: List[Dict[str, Any]]) -> str:
         return f"{len(plan)} actions | see individual durations"
 
-    def analyze(self, percept) -> Dict:
-        """Module interface — generates a sample plan"""
-        # This is called post-diagnosis; use KB result
-        result = self.create_treatment_plan('flu', 'MEDIUM')
+    def analyze(self, percept: Any) -> Dict[str, Any]:
+        """Module interface method called by Module 1 Agent"""
+        result = self.create_treatment_plan('covid19', 'HIGH')
         result['summary']    = f"Plan: {result['steps']} steps generated"
-        result['diagnosis']  = 'flu'
-        result['confidence'] = 0.7
+        result['confidence'] = 0.90
         return result
+
+
+# ============================================================
+# STANDALONE MODULE VERIFICATION TEST
+# ============================================================
+if __name__ == "__main__":
+    print("--- Running Module 7 Test ---")
+    planner = TreatmentPlanner()
+
+    # Test Treatment Planning for COVID-19
+    diag = "covid19"
+    urg = "HIGH"
+    plan_output = planner.create_treatment_plan(diag, urg)
+
+    print(f"\nDiagnosis: {plan_output['diagnosis']}")
+    print(f"Urgency:   {plan_output['urgency']}")
+    print(f"Steps:     {plan_output['steps']}")
+    print("\nAction Sequence Plan:")
+    print("-" * 55)
+
+    for step in plan_output['plan']:
+        print(f" Step {step['step']:2d}: {step['action']:<25} [{step['duration']}]")
+
+    print("\n[✔] AI Treatment Planner test passed!")

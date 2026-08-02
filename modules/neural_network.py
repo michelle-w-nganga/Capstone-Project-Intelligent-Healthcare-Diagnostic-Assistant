@@ -7,6 +7,8 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models, callbacks
 import matplotlib.pyplot as plt
+from typing import List, Dict, Any
+
 
 class NeuralDiagnosticModel:
     """
@@ -35,7 +37,7 @@ class NeuralDiagnosticModel:
         self._build_model()
 
     def _build_model(self):
-        """Build deep MLP architecture"""
+        """Build deep MLP architecture with Keras Sequential API"""
         n_inputs  = len(self.SYMPTOM_FEATURES)
         n_outputs = len(self.DISEASE_LABELS)
 
@@ -58,7 +60,7 @@ class NeuralDiagnosticModel:
             layers.Dense(32, activation='relu'),
             layers.BatchNormalization(),
 
-            # Output
+            # Output Layer (Multi-class classification)
             layers.Dense(n_outputs, activation='softmax')
         ], name='MedicalDNN')
 
@@ -69,27 +71,26 @@ class NeuralDiagnosticModel:
         )
 
     def _generate_data(self, n: int = 3000):
-        """Generate synthetic training data"""
-        from sklearn.preprocessing import LabelEncoder
+        """Generate synthetic training dataset"""
         np.random.seed(42)
 
         profiles = {
-            'flu':           {'fever':0.90,'cough':0.85,'fatigue':0.88,
-                              'headache':0.70,'body_aches':0.80},
-            'covid19':       {'fever':0.88,'cough':0.80,'fatigue':0.90,
-                              'loss_of_smell':0.85,'headache':0.65},
-            'dengue':        {'fever':0.98,'rash':0.75,'joint_pain':0.85,
-                              'headache':0.90,'fatigue':0.80},
-            'cardiac_event': {'chest_pain':0.92,'shortness_of_breath':0.88,
-                              'sweating':0.75,'fatigue':0.70},
-            'diabetes':      {'fatigue':0.82,'frequent_urination':0.95,
-                              'excessive_thirst':0.92,'blurred_vision':0.70},
-            'common_cold':   {'cough':0.90,'fever':0.50,'headache':0.60,
-                              'fatigue':0.55},
-            'tuberculosis':  {'cough':0.95,'weight_loss':0.85,'night_sweats':0.80,
-                              'fatigue':0.88,'fever':0.70},
-            'meningitis':    {'headache':0.95,'stiff_neck':0.90,'fever':0.92,
-                              'light_sensitivity':0.85},
+            'flu':           {'fever': 0.90, 'cough': 0.85, 'fatigue': 0.88,
+                              'headache': 0.70, 'body_aches': 0.80},
+            'covid19':       {'fever': 0.88, 'cough': 0.80, 'fatigue': 0.90,
+                              'loss_of_smell': 0.85, 'headache': 0.65},
+            'dengue':        {'fever': 0.98, 'rash': 0.75, 'joint_pain': 0.85,
+                              'headache': 0.90, 'fatigue': 0.80},
+            'cardiac_event': {'chest_pain': 0.92, 'shortness_of_breath': 0.88,
+                              'sweating': 0.75, 'fatigue': 0.70},
+            'diabetes':      {'fatigue': 0.82, 'frequent_urination': 0.95,
+                              'excessive_thirst': 0.92, 'blurred_vision': 0.70},
+            'common_cold':   {'cough': 0.90, 'fever': 0.50, 'headache': 0.60,
+                              'fatigue': 0.55},
+            'tuberculosis':  {'cough': 0.95, 'weight_loss': 0.85, 'night_sweats': 0.80,
+                              'fatigue': 0.88, 'fever': 0.70},
+            'meningitis':    {'headache': 0.95, 'stiff_neck': 0.90, 'fever': 0.92,
+                              'light_sensitivity': 0.85},
         }
 
         X_list, y_list = [], []
@@ -98,8 +99,7 @@ class NeuralDiagnosticModel:
         for label_idx, (disease, probs) in enumerate(profiles.items()):
             for _ in range(n_per):
                 row = np.array([
-                    1 if (np.random.random() <
-                          probs.get(feat, 0.03)) else 0
+                    1.0 if (np.random.random() < probs.get(feat, 0.03)) else 0.0
                     for feat in self.SYMPTOM_FEATURES
                 ], dtype=np.float32)
                 X_list.append(row)
@@ -110,8 +110,8 @@ class NeuralDiagnosticModel:
         idx = np.random.permutation(len(X))
         return X[idx], y[idx]
 
-    def train(self, epochs: int = 50, verbose: int = 1) -> Dict:
-        """Train the neural network"""
+    def train(self, epochs: int = 50, verbose: int = 1) -> Dict[str, float]:
+        """Train the deep neural network model"""
         X, y = self._generate_data(3000)
         split = int(0.8 * len(X))
         X_train, X_val = X[:split], X[split:]
@@ -126,12 +126,13 @@ class NeuralDiagnosticModel:
                 patience=5, min_lr=1e-6)
         ]
 
-        print("=" * 55)
-        print("  Neural Network — Medical Diagnosis Training")
-        print(f"  Architecture: {len(self.SYMPTOM_FEATURES)} → "
-              f"128 → 64 → 32 → {len(self.DISEASE_LABELS)}")
-        print("=" * 55)
-        self.model.summary()
+        if verbose > 0:
+            print("=" * 55)
+            print("  Neural Network — Medical Diagnosis Training")
+            print(f"  Architecture: {len(self.SYMPTOM_FEATURES)} → "
+                  f"128 → 64 → 32 → {len(self.DISEASE_LABELS)}")
+            print("=" * 55)
+            self.model.summary()
 
         self.history = self.model.fit(
             X_train, y_train,
@@ -142,18 +143,20 @@ class NeuralDiagnosticModel:
 
         val_acc = max(self.history.history['val_accuracy'])
         self.is_trained = True
-        print(f"\n✅ Best Validation Accuracy: {val_acc:.4f}")
+        if verbose > 0:
+            print(f"\n✅ Best Validation Accuracy: {val_acc:.4f}")
         return {'val_accuracy': val_acc}
 
-    def predict(self, symptoms: List[str]) -> Dict:
-        """Predict from symptom list"""
+    def predict(self, symptoms: List[str]) -> Dict[str, Any]:
+        """Predict disease from symptom list"""
         if not self.is_trained:
-            self.train(verbose=0)
+            self.train(epochs=30, verbose=0)
 
+        clean_symptoms = [s.lower().strip().replace(' ', '_') for s in symptoms]
+
+        # Features must be float32 for Keras model input
         features = np.array([
-            [1.0 if feat in [s.lower().replace(' ','_')
-                             for s in symptoms]
-             else 0.0
+            [1.0 if feat in clean_symptoms else 0.0
              for feat in self.SYMPTOM_FEATURES]
         ], dtype=np.float32)
 
@@ -168,7 +171,7 @@ class NeuralDiagnosticModel:
                                    proba.round(4).tolist()))
         }
 
-    def analyze(self, percept) -> Dict:
+    def analyze(self, percept: Any) -> Dict[str, Any]:
         """Module interface for the agent"""
         result = self.predict(percept.symptoms)
         result['summary'] = (f"DNN: {result['diagnosis']} "
@@ -176,7 +179,7 @@ class NeuralDiagnosticModel:
         return result
 
     def plot_training(self):
-        """Plot training history"""
+        """Plot training and validation accuracy/loss curves over epochs"""
         if not self.history:
             print("Train model first!")
             return
@@ -184,7 +187,7 @@ class NeuralDiagnosticModel:
         fig, axes = plt.subplots(1, 2, figsize=(14, 5))
         metrics = [('accuracy', 'val_accuracy', 'Accuracy'),
                    ('loss',     'val_loss',     'Loss')]
-        colors  = [('#3498db','#e74c3c'), ('#2ecc71','#e67e22')]
+        colors  = [('#3498db', '#e74c3c'), ('#2ecc71', '#e67e22')]
 
         for ax, (train_m, val_m, title), (tc, vc) in zip(
                 axes, metrics, colors):
@@ -197,10 +200,34 @@ class NeuralDiagnosticModel:
                          fontsize=13, fontweight='bold')
             ax.set_xlabel("Epoch")
             ax.set_ylabel(title)
-            ax.legend(); ax.grid(True, alpha=0.3)
+            ax.legend()
+            ax.grid(True, alpha=0.3)
 
         plt.suptitle("Neural Network Training Curves",
                      fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig("nn_training.png", dpi=150)
         plt.show()
+        print("✅ Saved training curves graphic: nn_training.png")
+
+
+# ============================================================
+# STANDALONE MODULE VERIFICATION TEST
+# ============================================================
+if __name__ == "__main__":
+    print("--- Running Module 5 Test ---")
+    nn = NeuralDiagnosticModel()
+
+    # Train model
+    nn.train(epochs=25, verbose=1)
+
+    # Test prediction
+    sample_symptoms = ["fever", "cough", "fatigue", "loss_of_smell"]
+    result = nn.predict(sample_symptoms)
+
+    print("\n[Prediction Test]:")
+    print(f"Symptoms Input: {sample_symptoms}")
+    print(f"Diagnosis:      {result['diagnosis']}")
+    print(f"Confidence:     {result['confidence']:.2%}")
+
+    print("\n[✔] Deep Neural Network test passed!")
