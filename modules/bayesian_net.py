@@ -143,4 +143,4 @@ if __name__ == "__main__":
     print("\nExplanation for covid19:")
     print("  " + bn.explain("covid19", test_symptoms))
 
-    print("\n[✔] Bayesian Network test successful!")
+    print("\n[✔] Bayesian Network test succeeded!")
