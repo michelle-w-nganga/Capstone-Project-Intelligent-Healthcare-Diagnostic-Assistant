@@ -241,4 +241,4 @@ if __name__ == "__main__":
     print(f"Confidence:     {result['confidence']:.2%}")
     print(f"Model Chosen:   {result['model_used']}")
 
-    print("\n[✔] ML Classifier test passed. Evaluation plot will be generated.")
+    print("\n[✔] ML Classifier test completed.")
