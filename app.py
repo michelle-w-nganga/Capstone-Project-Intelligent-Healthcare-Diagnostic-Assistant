@@ -4,15 +4,26 @@
 # Introduction to AI — 13-Week Capstone  
 # ============================================================  
 
+import os
 import sys  
 import json  
 import warnings  
+import argparse
+import subprocess
 import numpy as np  
 import matplotlib.pyplot as plt  
 import matplotlib.gridspec as gridspec  
 warnings.filterwarnings('ignore')  
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-# Import all modules  
+# Import Streamlit if available for Interactive Web UI
+try:
+    import streamlit as st
+    HAS_STREAMLIT = True
+except ImportError:
+    HAS_STREAMLIT = False
+
+# Import all sub-modules  
 from modules.agent           import HealthcareDiagnosticAgent, PatientPercept  
 from modules.knowledge_base  import MedicalKnowledgeBase  
 from modules.bayesian_net    import SimpleBayesianDiagnostics  
@@ -45,11 +56,7 @@ def section(title: str):
 
 def build_system() -> HealthcareDiagnosticAgent:  
     """Instantiate and wire all AI modules"""  
-    section("🔧 Building AI System — Registering Modules")  
-
     agent = HealthcareDiagnosticAgent()  
-
-    print("\n  Initializing modules...")  
     
     # 1. Logic Knowledge Base
     kb = MedicalKnowledgeBase()
@@ -59,14 +66,14 @@ def build_system() -> HealthcareDiagnosticAgent:
     bn = SimpleBayesianDiagnostics()
     agent.register_module('BayesianNet', bn)
 
-    # 3. ML Classifier (Train before attaching)
+    # 3. ML Classifier
     ml = MLDiagnosticClassifier()
     ml.train(verbose=False)
     agent.register_module('MLClassifier', ml)
 
-    # 4. Neural Network (Train before attaching)
+    # 4. Neural Network
     nn = NeuralDiagnosticModel()
-    nn.train(epochs=25, verbose=0)
+    nn.train(epochs=20, verbose=0)
     agent.register_module('NeuralNetwork', nn)
 
     # 5. Fuzzy Logic Controller
@@ -77,11 +84,10 @@ def build_system() -> HealthcareDiagnosticAgent:
     planner = TreatmentPlanner()
     agent.register_module('Planner', planner)
 
-    print(f"\n{C.GREEN}✅ System Assembly Complete! All sub-modules active.{C.END}")
     return agent
 
 def get_sample_patients():
-    """Returns test cases covering various diseases and clinical severities"""
+    """Returns standard test cases covering various diseases and clinical severities"""
     return [
         PatientPercept(
             patient_id="P001",
@@ -145,18 +151,22 @@ def display_report(patient: PatientPercept, report: dict, planner: TreatmentPlan
         if isinstance(res, dict) and 'summary' in res:
             print(f"    • {mod_name:<16}: {res['summary']}")
 
-    # Generate and display treatment plan
-    tx_plan = planner.create_treatment_plan(report['diagnosis'], report['urgency'])
-    print(f"\n  {C.BOLD}Generated Treatment Plan ({tx_plan.get('steps', 0)} steps):{C.END}")
-    for step in tx_plan.get('plan', []):
-        print(f"    Step {step['step']}: {step['action']:<25} [{step['duration']}]")
+            # ✅ NEW NORMALIZED LINE
+        diag_key = report['diagnosis'].lower().strip()
+
+        # Map common disease variations to standard keys expected by planner
+        if "covid" in diag_key:
+            diag_key = "covid-19"
+        elif "flu" in diag_key or "influenza" in diag_key:
+            diag_key = "flu"
+
+        tx_plan = planner.create_treatment_plan(diag_key, report['urgency'])
 
 def plot_capstone_dashboard(all_reports: list):
     """Plots combined evaluation metrics and exports final dashboard image"""
     fig = plt.figure(figsize=(16, 10))
     gs = gridspec.GridSpec(2, 2, figure=fig)
 
-    # 1. Diagnoses Summary
     ax1 = fig.add_subplot(gs[0, 0])
     patients = [r['patient_id'] for r in all_reports]
     confidences = [r['confidence'] * 100 for r in all_reports]
@@ -171,7 +181,6 @@ def plot_capstone_dashboard(all_reports: list):
         yval = bar.get_height()
         ax1.text(bar.get_x() + bar.get_width()/2.0, yval / 2, diag, ha='center', va='center', color='white', fontweight='bold', rotation=90)
 
-    # 2. Urgency Distribution
     ax2 = fig.add_subplot(gs[0, 1])
     urgencies = [r['urgency'] for r in all_reports]
     u_counts = {u: urgencies.count(u) for u in ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']}
@@ -183,7 +192,6 @@ def plot_capstone_dashboard(all_reports: list):
             startangle=140)
     ax2.set_title("Patient Urgency Triage Distribution", fontweight='bold')
 
-    # 3. Sub-Module Agreement Map
     ax3 = fig.add_subplot(gs[1, :])
     modules = ['KnowledgeBase', 'BayesianNet', 'MLClassifier', 'NeuralNetwork', 'FuzzySeverity']
     matrix = []
@@ -208,36 +216,207 @@ def plot_capstone_dashboard(all_reports: list):
     plt.savefig("final_capstone_dashboard.png", dpi=150, bbox_inches='tight')
     print(f"\n{C.GREEN}✅ Dashboard graphic saved: final_capstone_dashboard.png{C.END}")
 
+# ── STREAMLIT INTERACTIVE WEB DASHBOARD ────────────────────
+def run_interactive_web_ui():
+    """Renders interactive Streamlit interface when run via Streamlit"""
+    st.set_page_config(page_title="Healthcare Diagnostic AI", layout="wide", page_icon="🏥")
+    
+    st.title("🏥 Intelligent Healthcare Diagnostic Assistant")
+    st.markdown("### Interactive Patient Assessment & Clinical Triage")
+
+    @st.cache_resource
+    def get_cached_system():
+        agent = build_system()
+        planner = agent._modules['Planner']
+        return agent, planner
+
+    with st.spinner("Initializing AI Sub-Modules..."):
+        agent, planner = get_cached_system()
+
+    st.sidebar.header("⚙️ Input Vitals & Symptoms")
+    
+    # 1. Patient Metadata & Vitals Inputs
+    patient_id = st.sidebar.text_input("Patient ID", "P-CUSTOM")
+    age = st.sidebar.number_input("Age (Years)", min_value=1, max_value=110, value=34, step=1)
+    
+    # Temperature Input (Slider + Exact Number Box)
+    temperature = st.sidebar.number_input(
+        "Body Temperature (°C)", 
+        min_value=34.0, 
+        max_value=42.0, 
+        value=38.9, 
+        step=0.1,
+        format="%.1f"
+    )
+    
+    # Heart Rate Input
+    heart_rate = st.sidebar.number_input(
+        "Heart Rate (BPM)", 
+        min_value=30, 
+        max_value=220, 
+        value=98, 
+        step=1
+    )
+    
+    # Blood Pressure Input
+    blood_pressure = st.sidebar.text_input("Blood Pressure (Systolic/Diastolic)", "120/80")
+
+    # 2. Symptom Selection
+    st.sidebar.subheader("🤒 Symptoms Checklist")
+    all_symptoms = [
+        "fever", "cough", "loss of smell", "fatigue", "chest pain",
+        "shortness of breath", "sweating", "headache", "stiff neck",
+        "light sensitivity", "frequent urination", "excessive thirst",
+        "blurred vision", "rash", "joint pain", "body aches"
+    ]
+    
+    selected_symptoms = st.sidebar.multiselect(
+        "Select Observed Symptoms", 
+        all_symptoms, 
+        default=["fever", "cough", "loss of smell", "fatigue"]
+    )
+    
+    custom_symptom_input = st.sidebar.text_input("Additional Symptoms (comma-separated)", "")
+    if custom_symptom_input.strip():
+        extra_symptoms = [s.strip().lower() for s in custom_symptom_input.split(",") if s.strip()]
+        selected_symptoms.extend(extra_symptoms)
+
+    # 3. Main Assessment Output
+    st.markdown("---")
+    col_input, col_action = st.columns([1, 1])
+    
+    with col_input:
+        st.subheader("📋 Current Patient Profile")
+        st.write(f"• **Patient ID:** `{patient_id}` | **Age:** {age}")
+        st.write(f"• **Temperature:** `{temperature}°C` ({'Fever Detected' if temperature >= 38.0 else 'Normal'})")
+        st.write(f"• **Heart Rate:** `{heart_rate} BPM` ({'Tachycardia' if heart_rate > 100 else 'Normal'})")
+        st.write(f"• **Blood Pressure:** `{blood_pressure}`")
+        st.write(f"• **Symptoms List:** {', '.join(selected_symptoms) if selected_symptoms else 'None specified'}")
+
+    run_btn = st.sidebar.button("⚡ Run Diagnostic Engine", type="primary")
+
+    if run_btn or True:
+        patient = PatientPercept(
+            patient_id=patient_id,
+            symptoms=selected_symptoms,
+            age=age,
+            temperature=temperature,
+            heart_rate=heart_rate,
+            blood_pressure=blood_pressure
+        )
+        
+        report = agent.run(patient)
+        tx_plan = planner.create_treatment_plan(report['diagnosis'], report['urgency'])
+
+        st.markdown("---")
+        res_col1, res_col2 = st.columns([1, 1])
+
+        with res_col1:
+            st.subheader("📊 Diagnostic Consensus")
+            st.success(f"**Primary Diagnosis:** {report['diagnosis'].upper()}")
+            st.metric("Mean Consensus Confidence", f"{report['confidence']:.1%}")
+            
+            urg_color = "🔴" if report['urgency'] in ["HIGH", "CRITICAL"] else "🟡"
+            st.markdown(f"**Fuzzy Urgency Triage:** {urg_color} `{report['urgency']}`")
+            st.info(f"**Recommended Action:** {report['next_action']}")
+
+            st.write("---")
+            st.subheader("🧩 Sub-Module Diagnostic Breakdown")
+            for mod, data in report['module_results'].items():
+                if isinstance(data, dict) and 'summary' in data:
+                    st.write(f"• **{mod}**: {data['summary']}")
+
+        with res_col2:
+            st.subheader("🛠️ STRIPS Action Plan")
+            st.write(f"**Total Execution Steps:** {tx_plan.get('steps', 0)}")
+            for step in tx_plan.get('plan', []):
+                st.markdown(f"**Step {step['step']}:** `{step['action']}` — *[{step['duration']}]*")
+
+# ── INTERACTIVE TERMINAL INPUT MODE ───────────────────────
+def run_interactive_cli(agent, planner):
+    """Collects custom vitals and symptoms directly via terminal prompts"""
+    section("🎮 Custom Patient Input Mode")
+    
+    try:
+        patient_id = input("Enter Patient ID [e.g. P100]: ").strip() or "P100"
+        age = int(input("Enter Age (1-100) [Default: 35]: ").strip() or "35")
+        temp = float(input("Enter Body Temperature in °C [Default: 38.9]: ").strip() or "38.9")
+        hr = int(input("Enter Heart Rate in BPM [Default: 98]: ").strip() or "98")
+        bp = input("Enter Blood Pressure [Default: 120/80]: ").strip() or "120/80"
+        
+        print("\nAvailable preset symptoms: fever, cough, loss of smell, fatigue, chest pain, shortness of breath, sweating, headache, stiff neck, rash, joint pain")
+        symptoms_str = input("Enter comma-separated symptoms: ").strip().lower()
+        symptoms = [s.strip() for s in symptoms_str.split(",") if s.strip()] or ["fever", "cough"]
+
+        patient = PatientPercept(
+            patient_id=patient_id,
+            symptoms=symptoms,
+            age=age,
+            temperature=temp,
+            heart_rate=hr,
+            blood_pressure=bp
+        )
+
+        report = agent.run(patient)
+        display_report(patient, report, planner)
+    except (EOFError, KeyboardInterrupt):
+        print("\nReturning to default test suite execution...")
+
 def main():
+    if HAS_STREAMLIT and st.runtime.exists():
+        run_interactive_web_ui()
+        return
+
+    parser = argparse.ArgumentParser(description="Healthcare Diagnostic Assistant")
+    parser.add_argument("--gui", action="store_true", help="Launch interactive web UI")
+    args, _ = parser.parse_known_args()
+
+    if args.gui and HAS_STREAMLIT:
+        subprocess.run([sys.executable, "-m", "streamlit", "run", __file__])
+        return
+
     banner()
     
-    # Build System
+    section("🔧 Building AI System — Registering Modules")
     agent = build_system()
     planner = agent._modules['Planner']
-    
-    # Load Patients
-    patients = get_sample_patients()
-    
-    section("🏥 Running Live Diagnostics on Test Patients")
-    all_reports = []
+    print(f"\n{C.GREEN}✅ System Assembly Complete! All sub-modules active.{C.END}")
 
-    # Run Loop
-    for patient in patients:
-        report = agent.run(patient)
-        all_reports.append(report)
-        display_report(patient, report, planner)
+    print("\nSelect Mode:")
+    print("  [1] Run Standard 5 Test Patients (P001 - P005) & Generate Dashboard")
+    print("  [2] Custom Input Mode (Enter Temp, HR, BP, and Symptoms via Terminal)")
+    if HAS_STREAMLIT:
+        print("  [3] Launch Web Application Interface (Streamlit Browser App)")
 
-    # System Logs & Performance
-    section("📊 Performance Metrics & System Logs")
-    agent.print_log()
-    
-    perf = agent.get_performance()
-    print(f"\n  Total Patients Processed: {perf['total_patients']}")
-    print(f"  Diagnoses Completed:     {perf['diagnoses_made']}")
-    print(f"  Agent Performance Score: {perf['performance_score']}")
+    try:
+        choice = input("\nEnter choice [1-3] (Default: 1): ").strip()
+    except EOFError:
+        choice = "1"
 
-    # Dashboard Generation
-    plot_capstone_dashboard(all_reports)
+    if choice == "2":
+        run_interactive_cli(agent, planner)
+    elif choice == "3" and HAS_STREAMLIT:
+        print(f"\n{C.BLUE}🚀 Launching Web Interface...{C.END}")
+        subprocess.run([sys.executable, "-m", "streamlit", "run", __file__])
+    else:
+        patients = get_sample_patients()
+        section("🏥 Running Diagnostics on Sample Patients")
+        all_reports = []
+
+        for patient in patients:
+            report = agent.run(patient)
+            all_reports.append(report)
+            display_report(patient, report, planner)
+
+        section("📊 Performance Metrics & System Logs")
+        agent.print_log()
+        
+        perf = agent.get_performance()
+        print(f"\n  Total Patients Processed: {perf['total_patients']}")
+        print(f"  Diagnoses Completed:     {perf['diagnoses_made']}")
+        print(f"  Agent Performance Score: {perf['performance_score']}")
+
+        plot_capstone_dashboard(all_reports)
 
 if __name__ == "__main__":
     main()
