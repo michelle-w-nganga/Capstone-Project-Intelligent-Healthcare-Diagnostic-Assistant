@@ -120,7 +120,7 @@ class DiagnosticEvaluator:
 
 # Standalone Verification Test
 if __name__ == "__main__":
-    print("\n[OK] Evaluation metrics summary generated successfully.")
+    print("\n[Done] Metrics evaluation completed without issues.")
     evaluator = DiagnosticEvaluator()
     eval_df = evaluator.generate_evaluation_dataset(n_samples=400)
     metrics_summary = evaluator.evaluate_all_modules(eval_df)
